@@ -1,0 +1,50 @@
+{{- if .Values.ingress.enabled -}}
+{{- $defaultServicePort := .Values.service.ports.http.port }}
+{{- range $nameSuffix, $ingress := .Values.ingress.ingresses -}}
+{{- $serviceName := include "base.fullname" $ -}}
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: {{ include "base.fullname" $ }}-{{ $ingress.alias | default $nameSuffix }}
+  labels:
+    {{- include "base.labels" $ | nindent 4 }}
+  annotations:
+    {{- range $key, $value := $ingress.annotations }}
+    {{ $key }}: {{ $value | quote }}
+    {{- end }}
+spec:
+  {{- if $ingress.ingressClassName }}
+  ingressClassName: {{ $ingress.ingressClassName }}
+  {{- end }}
+  rules:
+    {{- range $ingress.rules }}
+    {{- $rule := . }}
+    - host: {{ $rule.host }}
+      http:
+        paths:
+          {{- range $path := $rule.paths }}
+          - path: {{ $path.path }}
+            pathType: {{ $path.pathType | default "Prefix" }}
+            backend:
+              {{- if $path.backend }}
+                {{- toYaml $path.backend | nindent 14 -}}
+              {{- else }}
+              service:
+                name: {{ $serviceName }}
+                port:
+                  number: {{ $path.port | default $defaultServicePort }}
+              {{- end }}
+          {{- end }}
+    {{- end }}
+  {{- if $ingress.tls.enabled }}
+  tls:
+    {{- range $ingress.tls.secrets }}
+    {{- $tls := . }}
+    - hosts:
+        {{- toYaml $tls.hosts | nindent 8 }}
+      secretName: {{ $tls.secretName | quote }}
+    {{- end }}
+  {{ end }}
+{{ end }}
+{{ end }}

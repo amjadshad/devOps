@@ -1,0 +1,8 @@
+.git
+*.md
+*.yaml
+*.yml
+.gitignore
+.vscode
+LICENSE
+temp/

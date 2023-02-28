@@ -1,0 +1,15 @@
+linters:
+  enable:
+    - gocritic
+    - gosec
+    - gofmt
+    - goimports
+    - gocyclo
+    - goconst
+    - prealloc
+    - revive
+    - stylecheck
+    - unconvert
+    - unparam
+    - errname
+    - errchkjson

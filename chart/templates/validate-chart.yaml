@@ -1,0 +1,50 @@
+{{- $types := list "Deployment" "StatefulSet" }}
+{{- if not (mustHas .Values.type $types) }}
+  {{- fail (printf ".Values.type can only be one of the following: %s" $types) }}
+{{- end }}
+
+{{- with .Values.service.ports }}
+  {{- range $portName, $spec := . }}
+    {{- if not $spec }}
+      {{- fail (printf ".Values.service.ports.%s spec cannot be empty" $portName) }}
+    {{- end }}
+    {{- if not $spec.port }}
+      {{- fail (printf ".Values.service.ports.%s.port spec cannot be empty" $portName) }}
+    {{- end }}
+    {{- if not $spec.targetPort }}
+      {{- fail (printf ".Values.service.ports.%s.targetPort spec cannot be empty" $portName) }}
+    {{- end }}
+  {{- end }}
+{{- end }}
+
+{{- with .Values.keyvault }}
+  {{- if .secrets }}
+    {{- if empty .name }}
+    {{- fail ".Values.keyvault.name is not set" }}
+    {{- end }}
+
+    {{- if empty .tenantID }}
+    {{- fail ".Values.keyvault.tenantID is not set" }}
+    {{- end }}
+
+    {{- if empty .clientID }}
+    {{- fail ".Values.keyvault.clientID is not set" }}
+    {{- end }}
+  {{- end }}
+{{- end }}
+
+{{- with .Values.containers }}
+  {{- range $container, $spec := . }}
+    {{- if empty $spec.image -}}
+      {{- fail (printf ".Values.containers.%s cannot be set to an empty value" $container) }}
+    {{- end }}
+  {{- end }}
+{{- end }}
+
+{{- with .Values.serviceAccount }}
+  {{- if or .role.create .clusterRole.create }}
+    {{- if not .create }}
+      {{- fail ".Values.serviceAccount.create cannot be set to false if role or clusterRole creation is enabled" }}
+    {{- end }}
+  {{- end }}
+{{- end }}

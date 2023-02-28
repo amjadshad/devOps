@@ -1,0 +1,84 @@
+name: GitHub Actions Login
+on: [push]
+jobs:
+  Explore-GitHub-Login:
+    runs-on: ubuntu-latest
+    env:
+      AZURE_WEBAPP_NAME_API: skillathon2022api
+      CERT: ${{ secrets.CERTIFICATE }}
+      WORKING_DIRECTORY_API: skillathon-api
+      CONFIGURATION: Release
+      DOTNET_CORE_VERSION: 3.1
+      AZURE_WEBAPP_PACKAGE_PATH:  skillathon-api/publish
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v2
+
+      - name: Setup .NET Core
+        uses: actions/setup-dotnet@v1
+        with:
+          dotnet-version: ${{ env.DOTNET_CORE_VERSION }}
+
+      - name: Setup Azure SPN Certificate file inside the runner
+        env:
+          CERT: ${{ secrets.CERTIFICATE }}
+        run: |
+          echo "$CERT" > file.pem
+      
+      - name: Login to Azure
+        run: |
+          az login --service-principal -u 9841977a-6276-4fa0-a65d-bb0a9de5816f -p file.pem --tenant db1e96a8-a3da-442a-930b-235cac24cd5c
+
+      - name: Restore
+        run: |
+          pwd
+          dotnet restore "${{ env.WORKING_DIRECTORY_API }}"
+
+      - name: Build
+        run: dotnet build "${{ env.WORKING_DIRECTORY_API }}" --configuration ${{ env.CONFIGURATION }} --no-restore
+
+      - name: Test
+        run: dotnet test "${{ env.WORKING_DIRECTORY_API }}" --no-build
+
+      - name: Publish
+        run: dotnet publish "${{ env.WORKING_DIRECTORY_API }}" --configuration ${{ env.CONFIGURATION }} --no-build --output "${{ env.AZURE_WEBAPP_PACKAGE_PATH }}"
+
+      - name: Install Node.js
+        uses: actions/setup-node@v2
+        with:
+          node-version: 14.x
+        
+      - name: BuildUI
+        working-directory: skillathon-ui
+        run: | 
+          npm install
+          npm run build
+
+     # Deploy to Azure Web apps
+      - name: 'Deploy API'
+        uses: azure/webapps-deploy@v2
+        with: 
+          app-name: ${{ env.AZURE_WEBAPP_NAME_API }} 
+          package: '${{ env.AZURE_WEBAPP_PACKAGE_PATH }}'
+      
+      - name: 'Deploy UI'
+        uses: azure/webapps-deploy@v2
+        with: 
+          app-name: skillathon2022ui
+          package: 'skillathon-ui/build'
+      
+      - name: logout
+        run: |
+          az logout 
+      
+      - name: Publish Artifacts API
+        uses: actions/upload-artifact@v1.0.0
+        with:
+          name: webapp-api
+          path: ${{ env.AZURE_WEBAPP_PACKAGE_PATH }}
+
+      - name: Publish Artifacts UI
+        uses: actions/upload-artifact@v1.0.0
+        with:
+          name: webapp-ui
+          path: 'skillathon-ui/build'

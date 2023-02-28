@@ -1,0 +1,406 @@
+# -- Override name prefix for all resources
+fullnameOverride: ""
+
+# -- Additional labels to be added to all resources
+additionalLabels: {}
+
+# -- Type of workload: [Deployment, Statefulset]
+type: Deployment
+
+#####
+## Availability
+#####
+
+# -- strategyType for Deployment: [RollingUpdate, Recreate]
+strategyType: RollingUpdate
+
+# -- podManagementPolicy for StatefulSet: [OrderedReady, Parallel]
+podManagementPolicy: OrderedReady
+
+# -- Number of replicas
+replicaCount: 1
+
+# Enable PodDisruptionBudget to prevent unexpected pod evicitons during nodes draining.
+# Useful if running more than 1 replica and dangerous if not.
+# Specify on of minAvailable or maxUnavailable. Specifying both is invalid.
+# See the k8s reference: https://kubernetes.io/docs/tasks/run-application/configure-pdb/
+pdb:
+  enabled: false
+  # minAvailable: 3
+  # maxUnavailable: 1
+
+#####
+## Scheduling
+#####
+
+# -- nodeSelector
+nodeSelector: {}
+
+## -- tolerations
+tolerations: []
+  ## Example
+  # - key: "key1"
+  #   operator: "Equal"
+  #   value: "value1"
+  #   effect: "NoSchedule"
+
+## -- affinity
+affinity:
+  # -- pre-defined podAntiAffinityPreset. Ignored if .Values.affinity.raw is set
+  podAntiAffinityPreset:
+    # -- type: [soft, hard]. "hard" acts as a requirement (predicate), soft - as a preference
+    type: soft
+    # -- topologyKey suffix: [hostname, zone]
+    topologyKey: hostname
+  # -- raw definition for the affinity block
+  raw: {}
+
+#####
+## Security
+#####
+
+# -- pod-level security context
+podSecurityContext:
+  # -- If the root of the volume already has the correct permissions, the recursive permission change can be skipped, offering faster startup
+  fsGroupChangePolicy: OnRootMismatch
+  # -- Whether to enforce non-root user
+  runAsNonRoot: true
+  ## Other useful settings
+  # fsGroup: 1001
+  # runAsGroup: 1001
+  # runAsUser: 1001
+
+# -- These settings will be merged into each individual (!)non-init(!) container's securityContext spec
+securityContext:
+  # -- Whether to allow privilege escalation
+  allowPrivilegeEscalation: false
+  # -- Capabilities
+  capabilities:
+    drop:
+    - "ALL"
+  # -- Whether the container is privileged. Privileged containers escape cgroup restrictions, thus not recommended
+  privileged: false
+  # -- Whether to enforce non-root user
+  runAsNonRoot: true
+
+#####
+## Azure Key Vault
+#####
+
+# -- Keyvault settings
+# NOTE: currently, the chart targets only setups with the secrets provider relying on a managed identity (through an Azure Extension)
+keyvault:
+  # -- Name of the keyvault
+  name: ""
+  # -- Tenant ID
+  tenantID: db1e96a8-a3da-442a-930b-235cac24cd5c
+  # -- Client ID used by the secrets provider
+  clientID: ""
+  # -- Whether to export the secrets as environment variables
+  exportAsEnv: true
+  # -- secrets that will be mounted into all non-init containers at /var/run/secrets/keyvault
+  secrets: {}
+    ## Example (<env/filename>: key)
+    # SECRET_SAUCE: secret-sauce
+
+#####
+## Containers
+#####
+
+# -- init-containers, processed as toYaml
+initContainers: []
+  ## Example:
+  # - name: init1
+  #   image: busybox
+  #   command: ['sh', '-c', 'until nslookup myservice; do echo waiting for myservice; sleep 2; done;']
+
+containers:
+  app:
+    # -- image
+    image: ""
+      ## Example
+      # image: alpine
+
+    # -- tag
+    imageTag: ""
+
+    # -- imagePullPolicy
+    imagePullPolicy: IfNotPresent
+
+    # -- Environment variables that will be stored in a configMap
+    env: {}
+      ## Example
+      # JAVA_OPTS: "-Xms128M -Xmx128M"
+
+    # -- Environment variables that will be stored in a secret
+    secretEnv: {}
+      ## Example
+      # SECRET_VARIABLE: "secret value"
+
+    # -- Extra environment variables processed as toYaml
+    extraEnv: []
+      ## Example
+      # - name: JAEGER_AGENT_HOST
+      #   valueFrom:
+      #     fieldRef:
+      #       fieldPath: status.hostIP
+
+    # -- Mount an existing configMap or a secret as container environment variables
+    envFrom: []
+      ## Example
+      #  - secretRef:
+      #    name: vault-keys
+      #    optional: true
+
+    # -- Mount existing configMaps as volumes
+    configMapsAsVolumes: []
+      ## Example:
+      # - name: <configMapName>
+      #   defaultMode: <for ex. 0644>
+      #   mountPath: <mountPath>
+
+    # -- Mount existing secrets as volumes
+    secretsAsVolumes: []
+      ## Example
+      # - name: kafka.client.truststore.jks
+      #   mountPath: /opt/
+      #   optional: false
+
+    # -- Generate a configMap from a variable and mount it as a volume
+    configMapsFromVar: []
+      ## Example:
+      # - mountPath: <mountPath>
+      #   defaultMode: <for ex. 0644>
+      #   files:
+      #   - name: <encodedFileName>
+      #     encoded: true # set if pre-encoded data supplied
+      #     data: <encodedData>
+      #   - name: <filename>
+      #     data: <data>
+
+    ## -- emptyDir volumes
+    emptyDirVolumes: {}
+      ## Example
+      # cache:
+      #   memory: false
+      #   mountPath: /cache
+      # memcache:
+      #   memory: true # tmpfs
+      #   mountPath: /memcache
+
+    # -- Resources
+    resources: {}
+      ## Example
+      # limits:
+      #   memory: 256Mi
+      #   cpu: 250m
+      # requests:
+      #   memory: 256Mi
+      #   cpu: 250m
+
+    # -- Override entrypoint
+    command: []
+      ## Example
+      # command: ["printenv"]
+
+    # -- Override arguments
+    args: []
+      ## Example
+      # args: ["HOSTNAME", "KUBERNETES_PORT"]
+
+    # -- Override autogenerated hostname
+    hostname: ""
+      ## Example
+      # hostname: some-hostname
+
+    # -- Liveness-probe
+    livenessProbe: {}
+      ## Example
+      # httpGet:
+      #   path: /healthz
+      #   port: 8080
+      # initialDelaySeconds: 20
+      # periodSeconds: 5
+      # failureThreshold: 6
+
+    # -- Readiness-probe
+    readinessProbe: {}
+      ## Example
+      # httpGet:
+      #   path: /healthz
+      #   port: 8080
+      # initialDelaySeconds: 5
+      # periodSeconds: 5
+      # failureThreshold: 1
+
+    # -- Startup-probe
+    startupProbe: {}
+      ## Example
+      # httpGet:
+      #   path: /healthz
+      #   port: 8080
+      # failureThreshold: 30
+      # periodSeconds: 10
+
+    # -- Lifecycle hooks. Pre-stop hooks can be useful for graceful shutdown
+    lifecycle: {}
+      ## Example
+      # preStop:
+      #   httpGet:
+      #     port: 8080
+      #     path: /shutdown
+
+    # -- Container-level securityContext. Individual settings have a higher precedence that .Values.securityContext
+    securityContext: {}
+
+#####
+## External storage (available only for StatefulSet)
+#####
+
+# -- Create a PVC for a stateful workload
+persistentVolumeClaim:
+  # -- Whether to create a PVC as part of StatefulSet spec
+  enabled: false
+  # -- Custom name for volumeClaimTemplate. Auto-generated if empty
+  name: ""
+  # -- Storage size
+  size: 5Gi
+  # -- storageClassName
+  storageClassName: managed-csi
+  # -- accessModes
+  accessModes:
+    - ReadWriteOnce
+
+#####
+## Miscellaneous pod settings
+#####
+
+# -- imagePullSecrets
+imagePullSecrets: []
+## Example:
+# - name: regcred
+
+## -- Annotations to be added to the pod spec. Useful for dev environment when imagePullPolicy is set to Always and image tag is the same, but the build itself is different.
+additionalPodAnnotations: {}
+  # ci/commithash: deadbeef
+
+#####
+## Service
+#####
+
+service:
+  # -- Type
+  type: ClusterIP
+  # -- Annotations
+  annotations: {}
+  # -- Expose multiple service ports
+  ports:
+    http:
+      # -- Lets you override port name (it's equal to the dict key by default)
+      alias: ""
+      # -- Port the service will expose
+      port: 80
+      # -- Target port (which application listens to)
+      targetPort: 8080
+      # -- Whether to create a ServiceMonitor for the port
+      serviceMonitor: false
+
+#####
+## Ingress
+#####
+
+ingress:
+  # -- Whether to create Ingress resource
+  enabled: false
+  ingresses:
+    # You could have multiple ingresses if needed
+    http:
+      # -- Lets you override ingress suffix name (it's equal to the dict key by default)
+      alias: ""
+      # -- annotations
+      annotations: {}
+      # -- ingressClassName
+      ingressClassName: ""
+      # -- Ingress rules
+      rules: []
+        ## Example
+        # - host: external-name.example.com
+        #   paths:
+        #     - path: /
+        #       # -- pathType, Prefix by default
+        #       pathType: Prefix
+        #       # -- Service port to route traffic to. Equal to .Values.service.ports.http by default
+        #       port: 80
+        #     - path: /icons
+        #       backend:
+        #         resource:
+        #           apiGroup: k8s.example.com
+        #           kind: StorageBucket
+        #           name: icon-assets
+      # TLS settings
+      tls:
+        enabled: false
+        secrets: []
+          ## Example
+          # - secretName: wildcard-example-com-tls
+          #   hosts:
+          #     - external-name.example.com
+
+#####
+## RBAC
+####
+
+serviceAccount:
+  # -- Whether to create a service account. If not, then `automountServiceAccountToken: false` is added to the pod spec.
+  create: false
+  # -- Custom name for a service account. Auto-generated if not set.
+  name: ""
+
+  role:
+    # -- Whether to create a Role and RoleBinding
+    create: false
+    # -- Rules to create
+    rules: []
+      ## Example
+      # - apiGroups: [""]
+      #   resources: ["pods"]
+      #   verbs: ["get", "watch", "list"]
+
+  clusterRole:
+    # -- Whether to create a ClusterRole and (RoleBinding or ClusteRoleBinding)
+    create: false
+    # -- Whether to bind ClusterRole with ClusterRoleBinding or RoleBinding
+    bindWithClusterRoleBinding: false
+    # -- Rules to create
+    rules: []
+      ## Example
+      # - apiGroups: [""]
+      #   resources: ["pods"]
+      #   verbs: ["get", "watch", "list"]
+
+#####
+## Raw resources
+#####
+
+# -- Helps you to deploy resources that are not part of the chart (same functionality as incubator/raw offers)
+# NOTE: labels are added automatically
+raw:
+  resources: []
+    ## Example
+    # - apiVersion: scheduling.k8s.io/v1beta1
+    #   kind: PriorityClass
+    #   metadata:
+    #     name: common-critical
+    #   value: 100000000
+    #   globalDefault: false
+    #   description: "This priority class should only be used for critical priority common pods."
+
+  templates: []
+    ## Example
+    # - |
+    #   apiVersion: v1
+    #   kind: Secret
+    #   metadata:
+    #     name: common-secret
+    #   stringData:
+    #     mykey: {{ .Values.mysecret }}

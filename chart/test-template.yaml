@@ -1,0 +1,144 @@
+# StatefulSet to test PVC templates
+type: StatefulSet
+
+antiAffinity: soft
+
+tolerations:
+- key: "key1"
+  operator: "Equal"
+  value: "value1"
+  effect: "NoSchedule"
+
+podSecurityContext:
+  fsGroup: 1001
+  fsGroupChangePolicy: OnRootMismatch
+  runAsGroup: 1001
+  runAsUser: 1001
+  runAsNonRoot: true
+
+keyvault:
+  name: aks-keyvault-weisdd
+  tenantID: bb9ebc7f-b105-4532-95ca-abf3431ff466
+  clientID: 5e0847ef-7f2c-4b24-8b96-abf9f6bb3724
+  secrets:
+    SECRET_SAUCE: secret-sauce
+
+containers:
+  app:
+    appVersion: 1.0.0.rc1-stub
+    image: "registry.example.com/productname/stubapp"
+    configMapsAsVolumes:
+      - name: test1-cm
+        defaultMode: 0644
+        mountPath: /data1
+      - name: test2-cm
+        defaultMode: 0644
+        mountPath: /data2
+    securityContext:
+      allowPrivilegeEscalation: false
+      capabilities:
+        drop:
+        - "ALL"
+      privileged: false
+      procMount: "Default"
+      readOnlyRootFilesystem: false
+      runAsGroup: 1001
+      runAsUser: 1001
+      runAsNonRoot: true
+    lifecycle:
+      preStop:
+        httpGet:
+          port: 8080
+          path: /shutdown
+
+additionalPodAnnotations:
+  ci/commithash: "123"
+
+service:
+  ports:
+    http:
+      serviceMonitor: true
+
+ingress:
+  enabled: true
+  ingresses:
+    test:
+      annotations:
+        nginx.ingress.kubernetes.io/rewrite-target: /$2
+        cert-manager.io/cluster-issuer: vault-issuer
+      ingressClassName: nginx
+      rules:
+        - host: external-name.example.com
+          paths:
+            - path: /something(/|$)(.*)
+              pathType: Prefix
+              port: 80
+        - host: external-name-extra.example.com
+          paths:
+            - path: /
+              pathType: Prefix
+            - path: /api/doc
+              pathType: Prefix
+              port: 8080
+            - path: /icons
+              pathType: Prefix
+              backend:
+                resource:
+                  apiGroup: k8s.example.com
+                  kind: StorageBucket
+                  name: icon-assets
+      tls:
+        enabled: true
+        ## Omit if `enabled: false`
+        secrets:
+          - secretName: wildcard-example-com-tls
+            hosts:
+              - external-name.example.com
+
+serviceAccount:
+  create: true
+  role:
+    create: true
+    rules:
+      - apiGroups: [""]
+        resources: ["pods"]
+        verbs: ["get", "watch", "list"]
+  clusterRole:
+    create: true
+    bindWithClusterRoleBinding: true
+    rules:
+      - apiGroups: [""]
+        resources: ["pods"]
+        verbs: ["get", "watch", "list"]
+
+pdb:
+  enabled: true
+  minAvailable: 3
+  maxUnavailable: 50%
+
+persistentVolumeClaim:
+  enabled: true
+  # name: "pv"
+  size: 5Gi
+  storageClassName: managed-csi
+  accessModes:
+    - ReadWriteOnce
+
+raw:
+  resources:
+    - apiVersion: scheduling.k8s.io/v1beta1
+      kind: PriorityClass
+      metadata:
+        name: common-critical
+      value: 100000000
+      globalDefault: false
+      description: "This priority class should only be used for critical priority common pods."
+
+  templates:
+    - |
+      apiVersion: v1
+      kind: Secret
+      metadata:
+        name: common-secret
+      stringData:
+        mykey: {{ .Values.keyvault.tenantID }}

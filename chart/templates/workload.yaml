@@ -1,0 +1,217 @@
+{{- if eq .Values.type "Deployment" }}
+apiVersion: apps/v1
+kind: Deployment
+{{- else if eq .Values.type "StatefulSet" }}
+apiVersion: apps/v1
+kind: StatefulSet
+{{- end }}
+metadata:
+  name: {{ template "base.fullname" . }}
+  labels:
+    {{- include "base.labels" . | nindent 4 }}
+spec:
+  {{- if eq .Values.type "Deployment" }}
+  strategy:
+    type: {{ default "RollingUpdate" .Values.strategyType }}
+  {{- else if eq .Values.type "StatefulSet" }}
+  podManagementPolicy: {{ default "OrderedReady" .Values.podManagementPolicy }}
+  serviceName: {{ template "base.fullname" . }}-headless
+  {{- end }}
+  replicas: {{ .Values.replicaCount }}
+  selector:
+    matchLabels:
+      {{- include "base.selectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "base.labels" . | nindent 8 }}
+      annotations:
+        checksum/configMapsEnv: {{ include (print $.Template.BasePath "/cm-env.yaml") . | sha256sum | quote }}
+        checksum/configMapsFromVar: {{ include (print $.Template.BasePath "/cm-var.yaml") . | sha256sum | quote }}
+        checksum/secretEnv: {{ include (print $.Template.BasePath "/secret-env.yaml") . | sha256sum | quote }}
+        checksum/keyvaultSecrets: {{ include (print $.Template.BasePath "/secretproviderclass.yaml") . | sha256sum | quote  }}
+        {{- range $annKey, $annValue := .Values.additionalPodAnnotations }}
+        {{- /*  Issue: https://github.com/helm/helm/issues/1707#issuecomment-686813959 .
+                We do not want to force user quoting values in values.yaml.
+                `toString` and `printf "%s"` doing right type conversion
+                but in case of long numeric value it's already in scientific notation (e.g. 8.7131128e+07).
+                So need to check type.
+                In current version of helm any numeric value type will be float64 */ -}}
+        {{- if has (typeOf $annValue) (list "int" "float" "float64") }}
+        {{ $annKey }}: {{ printf "%.f" $annValue | quote }}
+        {{- else }}
+        {{ $annKey }}: {{ $annValue | quote }}
+        {{- end }}
+        {{- end }}
+    spec:
+      {{- if not .Values.serviceAccount.create }}
+      automountServiceAccountToken: false
+      {{- end }}
+      serviceAccountName: {{ template "base.serviceAccountName" . }}
+      {{- if .Values.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml .Values.imagePullSecrets | nindent 8 }}
+      {{- end }}
+      {{- if .Values.hostname }}
+      hostname: {{ .Values.hostname }}
+      {{- end }}
+      {{- if .Values.nodeSelector }}
+      nodeSelector:
+        {{- toYaml .Values.nodeSelector | nindent 8 }}
+      {{- end }}
+      {{- with .Values.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.affinity }}
+      affinity:
+      {{- if .raw -}}
+        {{- toYaml .raw | nindent 8 }}
+      {{- else }}
+        {{- include "base.antiAffinityPreset" $ | nindent 8 }}
+      {{- end }}
+      {{- end }}
+      {{- if or .Values.initContainers }}
+      initContainers:
+        {{- toYaml .Values.initContainers | nindent 8 }}
+      {{- end }}
+      containers:
+        {{- $root := . -}}
+        {{- range $containerName, $containerValues := .Values.containers }}
+        - name: {{ $containerName }}
+          image: "{{ $containerValues.image }}:{{ $containerValues.imageTag | default "latest" }}"
+          imagePullPolicy: {{ $containerValues.imagePullPolicy }}
+          {{- if $containerValues.extraEnv }}
+          env:
+            {{- toYaml $containerValues.extraEnv | nindent 12 }}
+          {{- end }}
+          {{- if or $containerValues.env $containerValues.secretEnv $containerValues.envFrom (and $.Values.keyvault.secrets $.Values.keyvault.exportAsEnv) }}
+          envFrom:
+            {{- if $containerValues.env }}
+            - configMapRef:
+                name: {{ template "base.fullname" $root }}-{{ $containerName }}-cm-env
+            {{- end }}
+            {{- if and $.Values.keyvault.secrets $.Values.keyvault.exportAsEnv }}
+            - secretRef:
+              name: {{ include "base.fullname" $root }}-kv
+            {{- end }}
+            {{- if $containerValues.secretEnv }}
+            - secretRef:
+                name: {{ template "base.fullname" $root }}-{{ $containerName }}-secret-env
+            {{- end }}
+            {{- if $containerValues.envFrom }}
+            {{- toYaml $containerValues.envFrom | nindent 12 }}
+            {{- end }}
+          {{- end }}
+          resources:
+            {{- toYaml $containerValues.resources | nindent 12 }}
+          ports:
+            {{- range $port_name, $port_values := $.Values.service.ports }}
+            {{- if $port_values }}
+            - containerPort: {{ $port_values.targetPort }}
+              name: {{ $port_name }}
+            {{- end }}
+            {{- end }}
+          {{- if $containerValues.command }}
+          command:
+            {{- toYaml $containerValues.command | nindent 12 }}
+          {{- end }}
+          {{- if $containerValues.args }}
+          args:
+            {{- toYaml $containerValues.args | nindent 12 }}
+          {{- end }}
+          {{- if $containerValues.startupProbe }}
+          startupProbe:
+            {{- toYaml $containerValues.startupProbe | nindent 12 }}
+          {{- end }}
+          {{- if $containerValues.livenessProbe }}
+          livenessProbe:
+            {{- toYaml $containerValues.livenessProbe | nindent 12 }}
+          {{- end }}
+          {{- if $containerValues.readinessProbe }}
+          readinessProbe:
+            {{- toYaml $containerValues.readinessProbe | nindent 12 }}
+          {{- end }}
+          {{- if or $containerValues.emptyDirVolumes $containerValues.secretsAsVolumes $containerValues.configMapsFromVar $containerValues.configMapsAsVolumes }}
+          volumeMounts:
+            {{- range $cm := $containerValues.configMapsFromVar }}
+            - name: {{ $containerName }}-{{ regexReplaceAll "[^a-zA-Z0-9]" (regexReplaceAll "^/" $cm.mountPath "") "-" }}
+              mountPath: {{ $cm.mountPath }}
+            {{- end }}
+            {{- range $cm := $containerValues.configMapsAsVolumes }}
+            - name: {{ $containerName }}-{{ regexReplaceAll "[^a-zA-Z0-9]" (regexReplaceAll "^/" $cm.mountPath "") "-" }}
+              mountPath: {{ $cm.mountPath }}
+            {{- end }}
+            {{- range $emptyDirName, $emptyDirValue := $containerValues.emptyDirVolumes }}
+            - mountPath: {{ $emptyDirValue.mountPath }}
+              name: {{ $emptyDirName }}
+            {{- end }}
+            {{- range $secret := $containerValues.secretsAsVolumes }}
+            - name: {{ $secret.name }}
+              mountPath: {{ $secret.mountPath }}
+              readOnly: true
+            {{- end }}
+          {{- end }}
+          {{- with $containerValues.lifecycle }}
+          lifecycle:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          {{- $securityContext := deepCopy ($.Values.securityContext | default dict) | merge ($containerValues.securityContext | default dict) }}
+          securityContext: {{ $securityContext | toYaml | nindent 12 }}
+        {{- end }}
+      {{- with .Values.podSecurityContext }}
+      securityContext: {{ . | toYaml | nindent 8 }}
+      {{- end }}
+      volumes:
+        {{- if .Values.keyvault.secrets }}
+        - name: keyvault
+          csi:
+            driver: secrets-store.csi.k8s.io
+            readOnly: true
+            volumeAttributes:
+              secretProviderClass: {{ include "base.fullname" . }}
+        {{- end }}
+        {{- $root := . -}}
+        {{- range $containerName, $containerValues := .Values.containers -}}
+        {{- range $cm := $containerValues.configMapsFromVar }}
+        - name: {{ $containerName }}-{{ regexReplaceAll "[^a-zA-Z0-9]" (regexReplaceAll "^/" $cm.mountPath "") "-" }}
+          configMap:
+            name: {{ template "base.fullname" $root }}-{{ $containerName }}-cm-{{ regexReplaceAll "[^a-zA-Z0-9]" (regexReplaceAll "^/" $cm.mountPath "") "-" }}
+            defaultMode: {{ $cm.defaultMode }}
+        {{- end }}
+        {{- range $cm := $containerValues.configMapsAsVolumes }}
+        - name: {{ $containerName }}-{{ regexReplaceAll "[^a-zA-Z0-9]" (regexReplaceAll "^/" $cm.mountPath "") "-" }}
+          configMap:
+            name: {{ $cm.name }}
+            defaultMode: {{ $cm.defaultMode }}
+        {{- end }}
+        {{- range $emptyDirName, $emptyDirValue := $containerValues.emptyDirVolumes }}
+        - name: {{ $emptyDirName }}
+          {{- if ($emptyDirValue.memory | default false) }}
+          emptyDir:
+            medium: "Memory"
+          {{- else }}
+          emptyDir: {}
+          {{- end }}
+        {{- end }}
+        {{- range $containerValues.secretsAsVolumes }}
+        - name: {{ .name }}
+          secret:
+            secretName: {{ .name }}
+            optional: {{ .optional | default false }}
+        {{- end }}
+        {{- end }}
+  {{- if and .Values.type "StatefulSet" .Values.persistentVolumeClaim.enabled }}
+  volumeClaimTemplates:
+  - metadata:
+      name: {{ .Values.persistentVolumeClaim.name | default (include "base.fullname" .) }}
+      labels:
+        {{- include "base.labels" . | nindent 8 }}
+    spec:
+      accessModes:
+        {{- toYaml .Values.persistentVolumeClaim.accessModes | nindent 8 }}
+      resources:
+        requests:
+          storage: {{ .Values.persistentVolumeClaim.size }}
+      storageClassName: {{ .Values.persistentVolumeClaim.storageClassName }}
+  {{- end }}

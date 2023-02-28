@@ -1,0 +1,148 @@
+# Starter pipeline
+# Start with a minimal pipeline that you can customize to build and deploy your code.
+# Add steps that build, run tests, deploy, and more:
+# https://aka.ms/yaml
+
+trigger:
+- main
+
+variables:
+  uiSource: 'skillathon-ui'
+  uiBuild: 'skillathon-ui/build'
+  apiSource: 'skillathon-api'
+  apiBuild: 'skillathon-api/build'
+
+stages:
+- stage: BUILD
+  jobs:
+    - job: Build
+      pool:
+        vmImage: ubuntu-latest
+
+      steps:
+      - task: NodeTool@0
+        inputs:
+          versionSpec: '15.x'
+
+      - task: CmdLine@2
+        
+        inputs:
+          script: |
+            pushd $(uiSource)
+            npm install
+        displayName: "Install npm"
+      - task: CmdLine@2
+        
+        inputs:
+          script: |
+            pushd $(uiSource)
+            npm run build
+        displayName: "Build UI"
+
+      - task: ArchiveFiles@2
+        inputs:
+          rootFolderOrFile: '$(uiBuild)'
+          includeRootFolder: false
+          archiveType: 'zip'
+          archiveFile: '$(Build.ArtifactStagingDirectory)/$(Build.BuildId).zip'
+          replaceExistingArchive: true
+        displayName: 'Archive UI'
+
+      - task: PublishBuildArtifacts@1
+        inputs:
+          PathtoPublish: '$(Build.ArtifactStagingDirectory)'
+          ArtifactName: 'dropUI'
+          publishLocation: 'Container'
+        displayName: 'Publish Artifact UI'
+
+      - task: CmdLine@2
+        
+        inputs:
+          script: |
+            pushd $(apiSource)
+            dotnet restore
+        displayName: "Restore packages"
+        
+      - task: CmdLine@2
+        
+        inputs:
+          script: |
+            pushd $(apiSource)
+            dotnet build
+        displayName: "Build Api"
+
+      - task: CmdLine@2
+        
+        inputs:
+          script: |
+            pushd $(apiSource)
+            dotnet test
+        displayName: "Test Api"
+
+      - task: CmdLine@2
+        
+        inputs:
+          script: |
+            pushd $(apiSource)
+            dotnet publish --no-build --output build
+        displayName: "Package Api"
+
+      - task: ArchiveFiles@2
+        inputs:
+          rootFolderOrFile: '$(apiBuild)'
+          includeRootFolder: false
+          archiveType: 'zip'
+          archiveFile: '$(Build.ArtifactStagingDirectory)/$(Build.BuildId).zip'
+          replaceExistingArchive: true
+        displayName: 'Archive API'
+
+      - task: PublishBuildArtifacts@1
+        inputs:
+          PathtoPublish: '$(Build.ArtifactStagingDirectory)'
+          ArtifactName: 'dropAPI'
+          publishLocation: 'Container'
+        displayName: 'Publish Artifact API'
+
+- stage: Deploy
+  displayName: Deploy
+  jobs: 
+  - deployment: production_deploy
+    environment: production_deploy
+    pool:
+      vmImage: ubuntu-latest
+    strategy:
+      runOnce:
+        deploy:
+          steps:
+          - task: DownloadPipelineArtifact@2
+            inputs:
+              source: 'current'
+              artifact: 'dropUI'
+              path: '$(Pipeline.Workspace)/UI'
+            displayName: 'Download UI Artifact'
+          
+          - task: DownloadPipelineArtifact@2
+            inputs:
+              source: 'current'
+              artifact: 'dropAPI'
+              path: '$(Pipeline.Workspace)/API'
+            displayName: 'Download API Artifact'
+          
+          - task: AzureWebApp@1
+            inputs:
+              azureSubscription: 'IDESandBoxAzure'
+              appType: 'webAppLinux'
+              appName: 'skillathon2022ui'
+              package: '$(Pipeline.Workspace)/UI/*.zip'
+              startUpCommand: 'pm2 serve /home/site/wwwroot/ --no-daemon --spa'
+            displayName: ' UI Deploy'
+          
+          - task: AzureWebApp@1
+            inputs:
+              azureSubscription: 'IDESandBoxAzure'
+              appType: 'webAppLinux'
+              appName: 'skillathon2022api'
+              package: '$(Pipeline.Workspace)/API/*.zip'
+              startUpCommand: 'dotnet skillathon-api.dll'
+            displayName: ' API Deploy'
+

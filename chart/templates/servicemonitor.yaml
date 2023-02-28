@@ -1,0 +1,25 @@
+{{- if .Capabilities.APIVersions.Has "monitoring.coreos.com/v1" }}
+{{- $ports := list }}
+{{- range $port_name, $port_values := .Values.service.ports }}
+  {{- if ($port_values.serviceMonitor | default false) }}
+    {{- $ports = append $ports ($port_values.alias | default $port_name) }}
+  {{- end }}
+{{- end }}
+{{- if gt (len $ports) 0 }}
+---
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: {{ template "base.fullname" . }}
+  labels:
+    {{- include "base.labels" . | nindent 4 }}
+spec:
+  selector:
+    matchLabels:
+      {{- include "base.selectorLabels" . | nindent 6 }}
+  endpoints:
+    {{- range $ports }}
+    - port: {{ . }}
+    {{- end }}
+{{- end }}
+{{- end }}

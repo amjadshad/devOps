@@ -1,0 +1,9 @@
+{{- $template := fromYaml (include "base.rawMetadata" .) -}}
+{{- range .Values.raw.resources }}
+---
+{{ toYaml (merge . $template) -}}
+{{- end }}
+{{- range $i, $t := .Values.raw.templates }}
+---
+{{ toYaml (merge (tpl $t $ | fromYaml) $template) -}}
+{{- end }}
